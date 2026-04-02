@@ -3,8 +3,8 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const apiKey = env.VITE_GEMINI_API_KEY;
-  const model = env.VITE_GEMINI_MODEL || "gemini-2.5-flash-lite";
+  const apiKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY;
+  const model = env.GEMINI_MODEL || env.VITE_GEMINI_MODEL || "gemini-2.5-flash-lite";
   const attachGeminiProxy = (middlewares) => {
     middlewares.use("/api/gemini", async (req, res) => {
       if (req.method !== "POST") {
@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
       if (!apiKey) {
         res.statusCode = 500;
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ error: "Missing VITE_GEMINI_API_KEY in environment." }));
+        res.end(JSON.stringify({ error: "Missing GEMINI_API_KEY or VITE_GEMINI_API_KEY in environment." }));
         return;
       }
 
