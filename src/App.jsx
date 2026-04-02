@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import ExerciseSelect from "./components/ExerciseSelectHome";
 import WeightEntry from "./components/WeightEntry";
-import WebcamFeed from "./components/WebcamFeed";
+import WebcamFeed from "./components/WebcamFeedLive";
 import SessionPanel from "./components/SessionPanel";
 import SessionSummary from "./components/SessionSummary";
 import SessionsPage from "./components/SessionsPage";
@@ -183,7 +183,7 @@ const setVideoBlobRef = (blob) => { videoBlobRef.current = blob; };
       <SessionSummary
         exerciseId={exerciseId}
         weight={weight}
-        reps={repsRef.current}
+        reps={reps}
         formScore={formScore}
         onSave={handleSave}
         onDiscard={handleDiscard}

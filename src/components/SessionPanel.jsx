@@ -6,10 +6,12 @@ export default function SessionPanel({ reps, analysis, exercise, onEnd }) {
         <div style={styles.repBox}>
           <p style={styles.repLabel}>REPS</p>
           <p style={styles.repCount}>{reps}</p>
-          <p style={styles.phase} 
-        style={{
-            color: analysis?.color || "#444"
-          }}>
+          <p
+            style={{
+              ...styles.phase,
+              color: analysis?.color || "#444",
+            }}
+          >
             {analysis?.label || "Waiting..."}
           </p>
         </div>

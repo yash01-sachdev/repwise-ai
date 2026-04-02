@@ -9,18 +9,21 @@ export default function SessionsPage({ onBack }) {
   const [sessions, setSessions]   = useState([]);
   const [filter, setFilter]       = useState("all");
   const [loading, setLoading]     = useState(true);
+  const [replayBlob, setReplayBlob] = useState(null);
 
-const [replayBlob, setReplayBlob] = useState(null);
-
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  const loadSessions = async () => {
+  async function loadSessions() {
     const data = await getAllSessions();
     setSessions(data);
     setLoading(false);
-  };
+  }
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      loadSessions();
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   const handleDelete = async (id) => {
     await deleteSession(id);

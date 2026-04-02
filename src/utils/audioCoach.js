@@ -1,6 +1,5 @@
 let lastSpokenTime = 0;
 const COOLDOWN_MS = 1500;
-let lastRepMessage = "";
 
 export function speak(message, priority = "normal") {
   const now = Date.now();
