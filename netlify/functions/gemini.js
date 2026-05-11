@@ -1,7 +1,44 @@
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 
-function getEnv(name, fallbackName) {
-  return process.env[name] || (fallbackName ? process.env[fallbackName] : undefined);
+function normalizeEnvValue(value, names = []) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  let cleaned = value.trim();
+
+  if (!cleaned) {
+    return undefined;
+  }
+
+  if (
+    cleaned.length >= 2 &&
+    ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+      (cleaned.startsWith("'") && cleaned.endsWith("'")))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+
+  for (const name of names) {
+    const prefix = `${name}=`;
+    if (cleaned.startsWith(prefix)) {
+      cleaned = cleaned.slice(prefix.length).trim();
+      break;
+    }
+  }
+
+  return cleaned || undefined;
+}
+
+function getEnv(names) {
+  for (const name of names) {
+    const value = normalizeEnvValue(process.env[name], names);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function jsonResponse(body, status = 200) {
@@ -18,8 +55,8 @@ export default async function handler(request) {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
-  const apiKey = getEnv("GEMINI_API_KEY", "VITE_GEMINI_API_KEY");
-  const model = getEnv("GEMINI_MODEL", "VITE_GEMINI_MODEL") || DEFAULT_MODEL;
+  const apiKey = getEnv(["GEMINI_API_KEY", "VITE_GEMINI_API_KEY"]);
+  const model = getEnv(["GEMINI_MODEL", "VITE_GEMINI_MODEL"]) || DEFAULT_MODEL;
 
   if (!apiKey) {
     return jsonResponse(
@@ -51,6 +88,11 @@ export default async function handler(request) {
         if (text) {
           message = text;
         }
+      }
+
+      if (message.includes("API key not valid")) {
+        message +=
+          " Check the Netlify environment variable value and paste only the raw Gemini key, not a full NAME=value line.";
       }
 
       return jsonResponse({ error: message, model }, response.status);

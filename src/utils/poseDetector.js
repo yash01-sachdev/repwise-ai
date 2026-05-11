@@ -18,8 +18,8 @@ export async function loadMoveNet() {
   detector = await poseDetection.createDetector(
     poseDetection.SupportedModels.MoveNet,
     {
-      modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-    }
+      modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER,
+    },
   );
 
   console.log("✅ MoveNet Thunder loaded");
@@ -42,7 +42,7 @@ export function getAngle(A, B, C) {
   return angle;
 }
 
-export function getKP(keypoints, name, minScore = 0.2) {  // changed 0.4 → 0.2
+export function getKP(keypoints, name, minScore = 0.35) {
   const kp = keypoints.find((k) => k.name === name);
   if (!kp || kp.score < minScore) return null;
   return kp;

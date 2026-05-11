@@ -34,7 +34,11 @@ export default function App() {
   const formIssueRef = useRef(false);
 
   const videoBlobRef = useRef(null);
-const setVideoBlobRef = (blob) => { videoBlobRef.current = blob; };
+  const poseFramesRef = useRef([]);
+  const lastPoseSampleAtRef = useRef(0);
+  const sessionStartedAtRef = useRef(0);
+
+  const setVideoBlobRef = (blob) => { videoBlobRef.current = blob; };
 
   const { startRecording, stopRecording } = useMediaRecorder();
   // ─── Screen: select exercise ───
@@ -58,11 +62,15 @@ const setVideoBlobRef = (blob) => { videoBlobRef.current = blob; };
     resetDeadliftFlags();
     resetOverheadPressFlags();
     resetAudio();
+    poseFramesRef.current = [];
+    lastPoseSampleAtRef.current = 0;
+    sessionStartedAtRef.current = 0;
     setScreen("workout");
     setTimeout(() => speak(CUE.start()), 800);
   };
 
   const handleStreamReady = (stream) => {
+    sessionStartedAtRef.current = performance.now();
     startRecording(stream);
   };
 
@@ -79,12 +87,29 @@ const setVideoBlobRef = (blob) => { videoBlobRef.current = blob; };
 
     phaseRef.current = result.phase;
 
+    const now = performance.now();
+    if (sessionStartedAtRef.current > 0 && now - lastPoseSampleAtRef.current >= 120) {
+      poseFramesRef.current.push({
+        t: Math.round(now - sessionStartedAtRef.current),
+        keypoints: keypoints
+          .filter((kp) => kp.score >= 0.2)
+          .map((kp) => ({
+            name: kp.name,
+            x: Math.round(kp.x * 10) / 10,
+            y: Math.round(kp.y * 10) / 10,
+            score: Math.round((kp.score || 0) * 100) / 100,
+          })),
+      });
+      lastPoseSampleAtRef.current = now;
+    }
+
     // Track if any form issue happened this session
     if (
       result.isLeaningForward ||
       result.isTooDeep ||
       result.kneeOverToe ||
       result.isHipSag ||
+      result.isElbowSwinging ||
       result.hasFormIssue
     ) {
       formIssueRef.current = true;
@@ -114,6 +139,7 @@ const setVideoBlobRef = (blob) => { videoBlobRef.current = blob; };
       weight,
       reps: repsRef.current,
       formScore,
+      poseFrames: poseFramesRef.current,
     }, videoBlobRef.current);
     setScreen("sessions");
   };

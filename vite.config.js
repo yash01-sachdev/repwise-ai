@@ -3,8 +3,50 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const apiKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY;
-  const model = env.GEMINI_MODEL || env.VITE_GEMINI_MODEL || "gemini-2.5-flash-lite";
+
+  const normalizeEnvValue = (value, names = []) => {
+    if (typeof value !== "string") {
+      return undefined;
+    }
+
+    let cleaned = value.trim();
+
+    if (!cleaned) {
+      return undefined;
+    }
+
+    if (
+      cleaned.length >= 2 &&
+      ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+        (cleaned.startsWith("'") && cleaned.endsWith("'")))
+    ) {
+      cleaned = cleaned.slice(1, -1).trim();
+    }
+
+    for (const name of names) {
+      const prefix = `${name}=`;
+      if (cleaned.startsWith(prefix)) {
+        cleaned = cleaned.slice(prefix.length).trim();
+        break;
+      }
+    }
+
+    return cleaned || undefined;
+  };
+
+  const getEnv = (names) => {
+    for (const name of names) {
+      const value = normalizeEnvValue(env[name], names);
+      if (value) {
+        return value;
+      }
+    }
+
+    return undefined;
+  };
+
+  const apiKey = getEnv(["GEMINI_API_KEY", "VITE_GEMINI_API_KEY"]);
+  const model = getEnv(["GEMINI_MODEL", "VITE_GEMINI_MODEL"]) || "gemini-2.5-flash-lite";
   const attachGeminiProxy = (middlewares) => {
     middlewares.use("/api/gemini", async (req, res) => {
       if (req.method !== "POST") {
@@ -54,6 +96,11 @@ export default defineConfig(({ mode }) => {
               if (text) {
                 message = text;
               }
+            }
+
+            if (message.includes("API key not valid")) {
+              message +=
+                " Check the environment variable value and paste only the raw Gemini key, not a full NAME=value line.";
             }
 
             res.end(JSON.stringify({ error: message, model }));

@@ -36,6 +36,7 @@ export const CUE = {
   repCount:  (n) => `${n}`,
   goodRep:   ()  => "good",
   keepGoing: ()  => "keep going",
+  halfway:   ()  => "halfway",
   goodDepth: ()  => "good depth",
   tooDeep:   ()  => "too deep",
   chestUp:   ()  => "chest up",

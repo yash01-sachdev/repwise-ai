@@ -1,18 +1,35 @@
 import { useRef } from "react";
 
+const RECORDING_TYPES = [
+  "video/webm;codecs=vp8",
+  "video/webm",
+];
+
+function getSupportedMimeType() {
+  return RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
 export function useMediaRecorder() {
   const mediaRecorderRef = useRef(null);
-  const chunksRef        = useRef([]);
+  const chunksRef = useRef([]);
+  const mimeTypeRef = useRef("");
 
   const startRecording = (stream) => {
     if (!stream) return;
     chunksRef.current = [];
 
-    const recorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-        ? "video/webm;codecs=vp9"
-        : "video/webm",
-    });
+    const mimeType = getSupportedMimeType();
+    const options = {
+      videoBitsPerSecond: 2_500_000,
+    };
+
+    if (mimeType) {
+      options.mimeType = mimeType;
+    }
+
+    mimeTypeRef.current = mimeType || "video/webm";
+
+    const recorder = new MediaRecorder(stream, options);
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -30,7 +47,7 @@ export function useMediaRecorder() {
         return;
       }
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "video/webm" });
+        const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
         chunksRef.current = [];
         resolve(blob);
       };

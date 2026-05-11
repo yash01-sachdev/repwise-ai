@@ -1,49 +1,36 @@
-import { getAngle, getKP } from "../poseDetector";
+import { getAngle } from "../poseDetector";
 import { speak, CUE } from "../audioCoach";
+import { getBestSide, getTorsoLean, nextStableCount, smoothValue } from "./analysisHelpers";
 
-let wasAtBottom = false;
+let deadliftState = createFreshState();
 let formFlagsThisRep = {
   chestUp: false,
   hipsBack: false,
 };
 
+function createFreshState() {
+  return {
+    smoothedHipAngle: null,
+    smoothedKneeAngle: null,
+    smoothedTorsoLean: null,
+    previousHipAngle: null,
+    bottomFrames: 0,
+    lockoutFrames: 0,
+    wasAtBottom: false,
+  };
+}
+
 export function resetDeadliftFlags() {
-  wasAtBottom = false;
+  deadliftState = createFreshState();
   formFlagsThisRep = {
     chestUp: false,
     hipsBack: false,
   };
 }
 
-function getBestSide(keypoints) {
-  const left = {
-    shoulder: getKP(keypoints, "left_shoulder"),
-    hip: getKP(keypoints, "left_hip"),
-    knee: getKP(keypoints, "left_knee"),
-    ankle: getKP(keypoints, "left_ankle"),
-  };
-
-  const right = {
-    shoulder: getKP(keypoints, "right_shoulder"),
-    hip: getKP(keypoints, "right_hip"),
-    knee: getKP(keypoints, "right_knee"),
-    ankle: getKP(keypoints, "right_ankle"),
-  };
-
-  const leftScore = Object.values(left).reduce((sum, kp) => sum + (kp?.score || 0), 0);
-  const rightScore = Object.values(right).reduce((sum, kp) => sum + (kp?.score || 0), 0);
-
-  return leftScore >= rightScore ? left : right;
-}
-
-function getTorsoLean(shoulder, hip) {
-  const dx = Math.abs(shoulder.x - hip.x);
-  const dy = Math.abs(hip.y - shoulder.y) || 1;
-  return Math.atan2(dx, dy) * (180 / Math.PI);
-}
-
 export function analyzeDeadlift(keypoints, currentPhase, repCount) {
-  const { shoulder, hip, knee, ankle } = getBestSide(keypoints);
+  const bestSide = getBestSide(keypoints, ["shoulder", "hip", "knee", "ankle"]);
+  const { shoulder, hip, knee, ankle } = bestSide.joints;
 
   if (!shoulder || !hip || !knee || !ankle) {
     return {
@@ -52,23 +39,47 @@ export function analyzeDeadlift(keypoints, currentPhase, repCount) {
     };
   }
 
-  const hipAngle = getAngle(shoulder, hip, knee);
-  const kneeAngle = getAngle(hip, knee, ankle);
-  const torsoLean = getTorsoLean(shoulder, hip);
+  const rawHipAngle = getAngle(shoulder, hip, knee);
+  const rawKneeAngle = getAngle(hip, knee, ankle);
+  const rawTorsoLean = getTorsoLean(shoulder, hip);
 
-  let phase;
-  if (hipAngle > 150 && torsoLean < 20) {
-    phase = "LOCKOUT";
-  } else if (hipAngle < 110 && torsoLean > 45) {
-    phase = "BOTTOM";
-  } else if (currentPhase === "BOTTOM" || wasAtBottom) {
-    phase = "LIFTING";
-  } else {
-    phase = "LOWERING";
+  deadliftState.smoothedHipAngle = smoothValue(deadliftState.smoothedHipAngle, rawHipAngle, 0.35);
+  deadliftState.smoothedKneeAngle = smoothValue(deadliftState.smoothedKneeAngle, rawKneeAngle, 0.35);
+  deadliftState.smoothedTorsoLean = smoothValue(deadliftState.smoothedTorsoLean, rawTorsoLean, 0.35);
+
+  const hipAngle = deadliftState.smoothedHipAngle;
+  const kneeAngle = deadliftState.smoothedKneeAngle;
+  const torsoLean = deadliftState.smoothedTorsoLean;
+  const hipTrend =
+    deadliftState.previousHipAngle === null ? 0 : hipAngle - deadliftState.previousHipAngle;
+
+  deadliftState.previousHipAngle = hipAngle;
+  deadliftState.bottomFrames = nextStableCount(
+    deadliftState.bottomFrames,
+    hipAngle < 118 && torsoLean > 35,
+  );
+  deadliftState.lockoutFrames = nextStableCount(
+    deadliftState.lockoutFrames,
+    hipAngle > 158 && kneeAngle > 150 && torsoLean < 20,
+  );
+
+  if (deadliftState.bottomFrames >= 2) {
+    deadliftState.wasAtBottom = true;
   }
 
-  const isChestDropped = torsoLean > 60;
-  const isSquattingThePull = kneeAngle < 95;
+  let phase = currentPhase || "LOCKOUT";
+  if (deadliftState.bottomFrames >= 2) {
+    phase = "BOTTOM";
+  } else if (hipTrend > 1.2) {
+    phase = "LIFTING";
+  } else if (hipTrend < -1.2) {
+    phase = "LOWERING";
+  } else if (deadliftState.lockoutFrames >= 2) {
+    phase = "LOCKOUT";
+  }
+
+  const isChestDropped = torsoLean > 48;
+  const isSquattingThePull = kneeAngle < 100 && torsoLean < 34;
 
   if (isChestDropped && phase !== "LOCKOUT" && !formFlagsThisRep.chestUp) {
     speak(CUE.chestUp());
@@ -81,13 +92,9 @@ export function analyzeDeadlift(keypoints, currentPhase, repCount) {
   }
 
   let newRep = false;
-  if (phase === "BOTTOM") {
-    wasAtBottom = true;
-  }
-
-  if (wasAtBottom && phase === "LOCKOUT") {
+  if (deadliftState.wasAtBottom && deadliftState.lockoutFrames >= 2) {
     newRep = true;
-    wasAtBottom = false;
+    deadliftState.wasAtBottom = false;
     const nextRep = repCount + 1;
     speak(nextRep % 4 === 0 ? `good ${nextRep}` : `${nextRep}`);
     resetDeadliftFlags();

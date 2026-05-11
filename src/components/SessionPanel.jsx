@@ -48,6 +48,12 @@ export default function SessionPanel({ reps, analysis, exercise, onEnd }) {
                 <FormRow label="Depth" good={analysis.elbowAngle < 100} badText="Go lower" goodText="Good depth" />
               </>
             )}
+            {exercise === "bicepCurl" && (
+              <>
+                <FormRow label="Elbow" good={!analysis.isElbowSwinging} badText="Elbow swinging" goodText="Still" />
+                <FormRow label="Range" good={analysis.elbowAngle < 75 || analysis.phase !== "TOP"} badText="Curl higher" goodText="Good top" />
+              </>
+            )}
             {exercise === "deadlift" && (
               <>
                 <FormRow label="Chest" good={!analysis.isChestDropped} badText="Chest dropped" />

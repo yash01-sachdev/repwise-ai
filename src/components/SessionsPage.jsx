@@ -2,14 +2,13 @@ import { useState, useEffect } from "react";
 import { getAllSessions, deleteSession } from "../utils/sessionStorage";
 import { getBestSet, getMaxWeight, calcScore } from "../utils/bestSetScore";
 import { EXERCISES } from "../utils/exercises/index";
-
-
+import ReplayPlayer from "./ReplayPlayer";
 
 export default function SessionsPage({ onBack }) {
   const [sessions, setSessions]   = useState([]);
   const [filter, setFilter]       = useState("all");
   const [loading, setLoading]     = useState(true);
-  const [replayBlob, setReplayBlob] = useState(null);
+  const [replaySession, setReplaySession] = useState(null);
 
   async function loadSessions() {
     const data = await getAllSessions();
@@ -140,19 +139,12 @@ export default function SessionsPage({ onBack }) {
                   </span>
                   
                   <button
-  onClick={() => {
-    if (session.videoBuffer) {
-      const blob = new Blob([session.videoBuffer], { 
-        type: session.videoType || "video/webm" 
-      });
-      setReplayBlob(blob);
-    }
-  }}
-  style={styles.replayBtn}
-  disabled={!session.videoBuffer}
->
-  {session.videoBuffer ? "Replay" : "No video"}
-</button>
+                    onClick={() => setReplaySession(session)}
+                    style={styles.replayBtn}
+                    disabled={!session.videoBuffer}
+                  >
+                    {session.videoBuffer ? "Replay" : "No video"}
+                  </button>
 
                   <button
                     onClick={() => handleDelete(session.id)}
@@ -167,19 +159,14 @@ export default function SessionsPage({ onBack }) {
         </div>
       )}
 
-{replayBlob && (
-  <div style={styles.modalOverlay} onClick={() => setReplayBlob(null)}>
+{replaySession && (
+  <div style={styles.modalOverlay} onClick={() => setReplaySession(null)}>
     <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
       <div style={styles.modalTop}>
         <p style={styles.modalTitle}>Session Replay</p>
-        <button onClick={() => setReplayBlob(null)} style={styles.closeBtn}>✕</button>
+        <button onClick={() => setReplaySession(null)} style={styles.closeBtn}>✕</button>
       </div>
-      <video
-        src={URL.createObjectURL(replayBlob)}
-        controls
-        autoPlay
-        style={styles.video}
-      />
+      <ReplayPlayer session={replaySession} />
     </div>
   </div>
 )}
@@ -403,11 +390,6 @@ const styles = {
     color: "#555",
     fontSize: "1.2rem",
     cursor: "pointer",
-  },
-  video: {
-    width: "100%",
-    borderRadius: "10px",
-    backgroundColor: "#000",
   },
   replayBtn: {
     background: "none",

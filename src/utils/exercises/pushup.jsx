@@ -1,71 +1,109 @@
 import { getAngle, getKP } from "../poseDetector";
 import { speak } from "../audioCoach";
+import { averagePoints, getDistance, nextStableCount, smoothValue } from "./analysisHelpers";
 
-let wasAtBottom = false;
+let pushupState = createFreshState();
 let formFlagsThisRep = {
-  hipSag:  false,
-  notDeep: false,
+  hipSag: false,
 };
 
+function createFreshState() {
+  return {
+    smoothedElbowAngle: null,
+    previousElbowAngle: null,
+    bottomFrames: 0,
+    topFrames: 0,
+    wasAtBottom: false,
+  };
+}
+
 export function resetPushupFlags() {
-  wasAtBottom = false;
-  formFlagsThisRep = { hipSag: false, notDeep: false };
+  pushupState = createFreshState();
+  formFlagsThisRep = { hipSag: false };
 }
 
 export function analyzePushup(keypoints, repCount) {
   const lShoulder = getKP(keypoints, "left_shoulder");
   const rShoulder = getKP(keypoints, "right_shoulder");
-  const lElbow    = getKP(keypoints, "left_elbow");
-  const rElbow    = getKP(keypoints, "right_elbow");
-  const lWrist    = getKP(keypoints, "left_wrist");
-  const rWrist    = getKP(keypoints, "right_wrist");
-  const lHip      = getKP(keypoints, "left_hip");
-  const rHip      = getKP(keypoints, "right_hip");
+  const lElbow = getKP(keypoints, "left_elbow");
+  const rElbow = getKP(keypoints, "right_elbow");
+  const lWrist = getKP(keypoints, "left_wrist");
+  const rWrist = getKP(keypoints, "right_wrist");
+  const lHip = getKP(keypoints, "left_hip");
+  const rHip = getKP(keypoints, "right_hip");
 
   if (!lShoulder || !rShoulder || !lElbow || !rElbow || !lWrist || !rWrist) {
-    return { canAnalyze: false, missing: "Move camera above — need to see both arms" };
+    return {
+      canAnalyze: false,
+      missing: "Front or top view needed - keep both shoulders, elbows, and wrists visible",
+    };
   }
 
-  // Average both arms for stability
-  const lElbowAngle = getAngle(lShoulder, lElbow, lWrist);
-  const rElbowAngle = getAngle(rShoulder, rElbow, rWrist);
-  const elbowAngle  = (lElbowAngle + rElbowAngle) / 2;
+  const shoulderMid = averagePoints(lShoulder, rShoulder);
+  const hipMid = averagePoints(lHip, rHip);
+  const shoulderWidth = Math.max(getDistance(lShoulder, rShoulder), 1);
 
-  // Hip sag — hip should not drop below shoulder level
-  // In top-down/front view: hip y should be close to shoulder y
-  const shoulderY = (lShoulder.y + rShoulder.y) / 2;
-  const hipY      = lHip && rHip ? (lHip.y + rHip.y) / 2 : null;
-  const isHipSag  = hipY ? (hipY - shoulderY) > 60 : false;
+  const rawElbowAngle =
+    (getAngle(lShoulder, lElbow, lWrist) + getAngle(rShoulder, rElbow, rWrist)) / 2;
 
-  // Form cues
-  if (isHipSag && !formFlagsThisRep.hipSag) {
+  pushupState.smoothedElbowAngle = smoothValue(pushupState.smoothedElbowAngle, rawElbowAngle, 0.4);
+  const elbowAngle = pushupState.smoothedElbowAngle;
+  const elbowTrend =
+    pushupState.previousElbowAngle === null ? 0 : elbowAngle - pushupState.previousElbowAngle;
+
+  pushupState.previousElbowAngle = elbowAngle;
+  pushupState.bottomFrames = nextStableCount(pushupState.bottomFrames, elbowAngle < 95);
+  pushupState.topFrames = nextStableCount(pushupState.topFrames, elbowAngle > 155);
+
+  if (pushupState.bottomFrames >= 2) {
+    pushupState.wasAtBottom = true;
+  }
+
+  const hipDrop = hipMid ? hipMid.y - shoulderMid.y : 0;
+  const isHipSag = hipMid ? hipDrop > shoulderWidth * 0.45 : false;
+
+  let phase = "UP";
+  if (pushupState.bottomFrames >= 2) {
+    phase = "BOTTOM";
+  } else if (elbowTrend < -1.5) {
+    phase = "DESCENDING";
+  } else if (elbowTrend > 1.5) {
+    phase = "PRESSING";
+  }
+
+  if (isHipSag && !formFlagsThisRep.hipSag && phase !== "UP") {
     speak("hips up");
     formFlagsThisRep.hipSag = true;
   }
 
-  // Rep counting — elbow angle low then high
   let newRep = false;
-  if (elbowAngle < 90) wasAtBottom = true;
-  if (wasAtBottom && elbowAngle > 150) {
+  if (pushupState.wasAtBottom && pushupState.topFrames >= 2) {
     newRep = true;
-    wasAtBottom = false;
+    pushupState.wasAtBottom = false;
     const nextRep = repCount + 1;
     speak(nextRep % 4 === 0 ? `good ${nextRep}` : `${nextRep}`);
     resetPushupFlags();
   }
 
-  // Phase
-  let phase;
-  if (elbowAngle > 150)      phase = "UP";
-  else if (elbowAngle > 90)  phase = "DESCENDING";
-  else                       phase = "BOTTOM";
+  let label;
+  let color;
 
-  // Status
-  let label, color;
-  if (isHipSag)          { label = "HIPS UP ⚠️";     color = "#ff4444"; }
-  else if (phase === "UP")         { label = "UP — begin pushup"; color = "#00bfff"; }
-  else if (phase === "DESCENDING") { label = "DESCENDING ⬇";      color = "#ffaa00"; }
-  else                             { label = "GOOD DEPTH ✅";      color = "#00ff88"; }
+  if (isHipSag) {
+    label = "HIPS UP ⚠️";
+    color = "#ff4444";
+  } else if (phase === "UP") {
+    label = "UP — begin pushup";
+    color = "#00bfff";
+  } else if (phase === "DESCENDING") {
+    label = "DESCENDING ⬇";
+    color = "#ffaa00";
+  } else if (phase === "PRESSING") {
+    label = "PRESS UP ⬆";
+    color = "#00bfff";
+  } else {
+    label = "GOOD DEPTH ✅";
+    color = "#00ff88";
+  }
 
   return {
     canAnalyze: true,
